@@ -18,7 +18,6 @@ Prerequisites:
 
 import json
 import os
-from urllib.parse import urlparse
 
 import requests
 from dotenv import load_dotenv
@@ -98,10 +97,6 @@ def create_a2a_connection(credential: DefaultAzureCredential) -> None:
     target_a2a_url = (
         f"{PROJECT_ENDPOINT}/agents/{SPECIALIST_AGENT_NAME}/endpoint/protocols/a2a"
     )
-    # The card path must resolve to the same host/project/agent as the target.
-    # A bare "/agentCard/v1.0" resolves to the host root and is rejected, so we
-    # use the full absolute path of the card.
-    agent_card_path = urlparse(target_a2a_url).path + "/agentCard/v1.0"
     url = (
         f"https://management.azure.com/subscriptions/{SUBSCRIPTION_ID}"
         f"/resourceGroups/{RESOURCE_GROUP}"
@@ -118,8 +113,10 @@ def create_a2a_connection(credential: DefaultAzureCredential) -> None:
             "target": target_a2a_url,
             "audience": "https://ai.azure.com",
             "Credentials": {},
-            # Foundry agents serve their card at .../a2a/agentCard/v1.0.
-            "metadata": {"AgentCardPath": agent_card_path},
+            # Relative card path (NO leading slash) so it resolves under the
+            # target's project/agent path, not the host root. A leading slash
+            # makes it resolve to the host root and fails the same-agent check.
+            "metadata": {"AgentCardPath": "agentCard/v1.0"},
         }
     }
 
