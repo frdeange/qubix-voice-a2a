@@ -102,6 +102,8 @@ export default function Home() {
       if (msg.text) addLog("Assistant: " + msg.text);
     } else if (msg.type === "tool_call") {
       addLog("(consulting Work IQ...)");
+    } else if (msg.type === "tool_result") {
+      addLog("Work IQ ▸ " + msg.text);
     } else if (msg.type === "error") {
       addLog("Error: " + msg.message);
     }

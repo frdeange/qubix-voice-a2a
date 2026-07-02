@@ -13,6 +13,7 @@ Run:  uvicorn app:app --host 0.0.0.0 --port 8000
 import asyncio
 import base64
 import json
+import logging
 import os
 from contextlib import suppress
 from typing import Any, Optional
@@ -45,6 +46,11 @@ from workiq import ask_workiq
 
 # Load the shared repo .env (two levels up from webapp/backend).
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
+logger = logging.getLogger("qubix")
 
 VOICELIVE_ENDPOINT = os.environ["VOICELIVE_ENDPOINT"]
 REALTIME_MODEL = os.environ.get("REALTIME_MODEL", "gpt-realtime")
@@ -258,11 +264,17 @@ class VoiceBridge:
         except json.JSONDecodeError:
             args = {}
         question = args.get("question", "")
+        logger.info("ask_office question: %s", question)
 
         try:
             answer = await ask_workiq(self.user_token, question)
+            logger.info("Work IQ answer: %s", answer[:500])
         except Exception as exc:  # noqa: BLE001 - surface tool errors to the model
-            answer = f"Work IQ could not be reached: {exc}"
+            answer = f"Work IQ error: {type(exc).__name__}: {exc}"
+            logger.exception("Work IQ call failed")
+
+        # Surface the raw tool result/error in the browser log too.
+        await self._send({"type": "tool_result", "text": answer})
 
         await conn.conversation.item.create(
             previous_item_id=call["previous_item_id"],

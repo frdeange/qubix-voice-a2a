@@ -7,13 +7,20 @@ with a question. Responses may be JSON or SSE (text/event-stream).
 """
 
 import json
+import logging
 import uuid
 from typing import Any, Optional
 
 import httpx
 
+logger = logging.getLogger("qubix.workiq")
+
 MCP_URL = "https://workiq.svc.cloud.microsoft/mcp"
 PROTOCOL_VERSION = "2024-11-05"
+
+
+class WorkIQError(Exception):
+    """Raised when a Work IQ MCP call fails, carrying the server detail."""
 
 # Preferred tool name fragments, most specific first.
 _PREFERRED_TOOLS = ("ask", "chat", "copilot", "search", "query")
@@ -61,7 +68,8 @@ async def _rpc(
         body["params"] = params
 
     resp = await client.post(MCP_URL, headers=headers, json=body, timeout=90)
-    resp.raise_for_status()
+    if resp.status_code >= 400:
+        raise WorkIQError(f"HTTP {resp.status_code} on '{method}': {resp.text[:600]}")
     return resp
 
 
@@ -110,27 +118,36 @@ async def ask_workiq(token: str, question: str) -> str:
             },
         )
         session_id = init.headers.get("Mcp-Session-Id")
-        _parse_mcp_response(init)  # validates the handshake
+        init_msg = _parse_mcp_response(init)
+        if "error" in init_msg:
+            raise WorkIQError(f"initialize failed: {init_msg['error']}")
+        logger.info("Work IQ initialized (session=%s)", session_id)
 
         # 2) initialized notification
         await _rpc(client, token, session_id, "notifications/initialized", is_notification=True)
 
         # 3) tools/list
         tools_resp = await _rpc(client, token, session_id, "tools/list")
-        tools = _parse_mcp_response(tools_resp).get("result", {}).get("tools", [])
+        tools_msg = _parse_mcp_response(tools_resp)
+        if "error" in tools_msg:
+            raise WorkIQError(f"tools/list failed: {tools_msg['error']}")
+        tools = tools_msg.get("result", {}).get("tools", [])
+        logger.info("Work IQ tools available: %s", [t.get("name") for t in tools])
         tool = _pick_tool(tools)
         if not tool:
-            return "Work IQ returned no tools."
+            raise WorkIQError("Work IQ returned no tools.")
 
         # 4) tools/call
+        arguments = _build_arguments(tool, question)
+        logger.info("Calling Work IQ tool '%s' with arguments %s", tool["name"], arguments)
         call_resp = await _rpc(
             client,
             token,
             session_id,
             "tools/call",
-            {"name": tool["name"], "arguments": _build_arguments(tool, question)},
+            {"name": tool["name"], "arguments": arguments},
         )
         message = _parse_mcp_response(call_resp)
         if "error" in message:
-            return f"Work IQ tool error: {message['error'].get('message')}"
+            raise WorkIQError(f"tools/call failed: {message['error']}")
         return _extract_text(message.get("result"))
