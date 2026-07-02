@@ -1,0 +1,7 @@
+# Dependencies for the setup scripts (run inside the devcontainer).
+# These scripts create the Foundry agents and wire up A2A. No audio needed.
+azure-ai-projects>=2.0.0
+azure-identity
+python-dotenv
+requests
+openai

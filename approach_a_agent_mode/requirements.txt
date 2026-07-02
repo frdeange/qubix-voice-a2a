@@ -1,0 +1,9 @@
+# Dependencies for Approach A.
+# create_orchestrator_agent.py runs in the devcontainer (no audio).
+# voice_orchestrator.py must run on a host WITH a microphone and speakers.
+azure-ai-projects>=2.0.0
+azure-ai-voicelive[aiohttp]
+azure-identity
+python-dotenv
+requests
+pyaudio
